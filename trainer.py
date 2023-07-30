@@ -1,6 +1,28 @@
 import torch
-from tqdm import tqdm
-import numpy as np
+import logging
+
+
+
+def recored_log(logging_fn, epoch, iteration, loss, avg_loss, y=None, int_to_str=None):
+
+    logging.basicConfig(filename=logging_fn, level=logging.INFO)
+    logging.info(
+        {
+            'epoch' : epoch,
+            'iteration' : iteration,
+            'iteration_loss' : loss,
+            'avg_loss' : avg_loss,
+            'true_y' : y,
+            'int_to_str' : int_to_str,
+        }
+    )
+
+
+
+def int_to_str(pred, mapping):
+    mapping[len(mapping)] = 'B'
+    out = [mapping[i] for i in pred]
+    return "".join(out)
 
 
 def training(
@@ -45,6 +67,16 @@ def training(
         loss.backward()
         optimizer.step()
 
+        recored_log(
+            config.train_logging_fn, 
+            epoch, 
+            idx, 
+            loss.item(), 
+            (total_cost)/(idx+1),
+            y[0].detach().cpu(),
+            int_to_str(output[0].argmax(dim=-1).detach().cpu().numpy(), num_to_char)
+            )
+
         if idx%2 == 0:
             print(f"Epoch {epoch} Iteration {idx} : \
                 Loss = {float(total_cost/(idx+1)):.6}, \
@@ -54,10 +86,10 @@ def training(
 
         if idx%50==0:
             output = output.permute(1,0,2)
-            print(f'y : {y[0].detach().cpu()}')
-            print(output[0].argmax(dim=-1))
-            ex_out = [num_to_char[i] for i in output[0].argmax(dim=-1).detach().cpu().numpy()]
-            print(f'y_ : {ex_out}')
+            y_char = int_to_str(y[0].detach().cpu().numpy(), num_to_char)
+            print(f'y : {y_char}')
+            out_char = int_to_str(output[0].argmax(dim=-1).detach().cpu().numpy(), num_to_char)
+            print(f'y_ : {out_char}')
 
     return model, total_cost/len(train_dataloader)
 
@@ -93,21 +125,31 @@ def validating(
             val_total_cost += loss.item()
             val_cost_ls += [loss.item()]
 
+            recored_log(
+                config.train_logging_fn, 
+                epoch, 
+                idx, 
+                loss.item(), 
+                (val_total_cost)/(idx+1),
+                y[0].detach().cpu(),
+                int_to_str(output[0].argmax(dim=-1).detach().cpu().numpy(), num_to_char)
+                )
 
-        if idx%2 == 0:
-            print(f"Validation... Epoch {epoch} Iteration {idx} : \
-                Loss = {float(val_total_cost/(idx+1)):.6},", 
-                end = '\r')
+            if idx%2 == 0:
+                print(f"Validation... Epoch {epoch} Iteration {idx} : \
+                    Loss = {float(val_total_cost/(idx+1)):.6},", 
+                    end = '\r')
 
 
-        if idx%5 == 0:
-            output = output.permute(1,0,2)
-            y_ = y[0].detach().cpu()
-            y_s += [y_]
-            print(f'y : {y_}')
-            ex_out = [num_to_char[i] for i in output[0].argmax(dim=-1).detach().cpu().numpy()]
-            y_hats += ex_out
-            print(f'y_ : {ex_out}')
+            if idx%50 == 0:
+                output = output.permute(1,0,2) # 원상복귀
+                y_char = int_to_str(y[0].detach().cpu().numpy(), num_to_char)
+                print(f'y : {y_char}')
+                out_char = int_to_str(output[0].argmax(dim=-1).detach().cpu().numpy(), num_to_char)
+                print(f'y_ : {out_char}')
+
+                y_s += [y_char]
+                y_hats += [out_char]
 
     return val_total_cost/len(valid_dataloader), y_s, y_hats
     

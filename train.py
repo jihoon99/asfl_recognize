@@ -89,7 +89,8 @@ class Config:
     max_target_length : int
     num_target : int #= 59 # including Pad token
     n_epochs : int #= 30
-    logging_fn :str #= './log/training.log'
+    train_logging_fn :str #= './log/training.log'
+    valid_logging_fn :str
     model_fn : str #= './ckpt/'
     load_model_fn : str # './ckpt/'
     random_seed : int
@@ -388,7 +389,8 @@ if __name__ == "__main__":
         max_target_length  = 45,
         num_target         = 59,  # including Pad token, and 'None' token
         n_epochs           = 100,
-        logging_fn         = './log/training.log',
+        train_logging_fn   = './log/training.log',
+        valid_logging_fn   = './log/validating.log',
         model_fn           = './ckpt/',
         load_model_fn      = './ckpt/',
 
@@ -504,7 +506,7 @@ if __name__ == "__main__":
     model = GCNNet(
         hidden_size = mini['hand_df'].shape[-1],
         final_output=final_output,
-        n_layer=config.num_layer, # 6 was shit
+        n_layer=config.num_layer,
         activation=nn.LeakyReLU(),
     )
     print(model)
@@ -543,15 +545,11 @@ if __name__ == "__main__":
 
 
 
-
-
-
-
-    ###### training, validation : add logger
+    ###### training, validation : add logger   ->> done
     ###### save won't work -> change
     ###### DataLoader 3 iteration
     ###### preprocess 
-
+    ############################ why my loss goes down but predictions are shit
 
     for epoch in range(config.n_epochs):
         for train_loader_ in train_loader: # trainloadr1
@@ -577,7 +575,9 @@ if __name__ == "__main__":
                                     config=config)
             total_valid_cost += val_cost
 
-
+        print(f'min_avg_cost : {min_avg_cost} \
+              val_cost : {val_cost}')
+        
         if min_avg_cost > val_cost:
             dict_for_infer = {
                 'model':model.state_dict(),
