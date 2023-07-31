@@ -52,14 +52,21 @@ def training(
         optimizer.zero_grad()
 
         output = model(hand_df, ADJ_MATRIX) # bs, maxlen, 59
-        output = output.permute(1,0,2)  # 고쳐야하네.........ㄴㅁㄴㅇ리;ㅏㅁ너;리머ㅏㄴㅇ;ㅣ라
 
         torch.nn.utils.clip_grad_norm_(
                 model.parameters(),
                 config.max_grad_norm,
             )
+        
+        if config.loss == 'CTCLoss':
+            output = output.permute(1,0,2)  # 고쳐야하네.........ㄴㅁㄴㅇ리;ㅏㅁ너;리머ㅏㄴㅇ;ㅣ라
+            loss = criterion(output, y, frame_length, y_length) # input_lengths must be of size batch_size
+        elif config.loss == 'NLLLoss':
 
-        loss = criterion(output, y, frame_length, y_length) # input_lengths must be of size batch_size
+            loss = criterion(output.contiguous().view(-1, output.size(-1)),
+                              y.contiguous().view(-1))
+
+
         # output : [200,32,59] / frame_len : 11 / y_leng : 11  -> output의 1번 사이즈와, frame사이즈가 안맞아.
         cost_ls += [loss.item()]
         total_cost += loss.item()
@@ -119,9 +126,15 @@ def validating(
             ADJ_MATRIX = ADJ_MATRIX.to(device)
 
             output = model(hand_df, ADJ_MATRIX)
-            output = output.permute(1,0,2)
 
-            loss = criterion(output, y, frame_length, y_length)
+            if config.loss == 'CTCLoss':
+                output = output.permute(1,0,2)  # 고쳐야하네.........ㄴㅁㄴㅇ리;ㅏㅁ너;리머ㅏㄴㅇ;ㅣ라
+                loss = criterion(output, y, frame_length, y_length) # input_lengths must be of size batch_size
+            elif config.loss == 'NLLLoss':
+
+                loss = criterion(output.contiguous().view(-1, output.size(-1)),
+                                y.contiguous().view(-1))
+
             val_total_cost += loss.item()
             val_cost_ls += [loss.item()]
 

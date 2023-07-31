@@ -24,6 +24,9 @@ class PadFill():
 
         # max_frame = min(self.config.max_frame_length, max([i.shape[0] for i in frames]))
         max_frame = max([i.shape[0] for i in frames])
+        if self.config.padding_max:
+            max_frame = self.max_frame_length
+
 
         frames = torch.nested.nested_tensor(frames)
         frames = torch.nested.to_padded_tensor(frames, 0, (self.config.batch_size,
@@ -38,6 +41,9 @@ class PadFill():
             self.max_target_length,
             max([i.shape[0] for i in targets])
             )
+
+        if self.config.padding_max:
+            max_char = self.max_target_length
 
         if self.config.add_padding_token:
             targets = torch.nested.nested_tensor(targets)

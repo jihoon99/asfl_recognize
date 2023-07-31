@@ -15,5 +15,5 @@ partial_train_1.parquet
 partial_train_2.parquet
 
 
-model/
 tf/
+ckpt/

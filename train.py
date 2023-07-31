@@ -27,7 +27,7 @@ from datetime import date
 from pprint import pprint
 
 from preprocess.dataloader import ClassificationDataset, PadFill
-from model.GCN import GCNNet
+from model.GCN import GCNNet, GCNNetCNN
 from trainer import training, validating
 
 ADJ_MATRIX = torch.tensor([
@@ -71,9 +71,9 @@ class Config:
     # num_df_parts : int
     drop_na : bool
 
-
+    padding_max : bool
     valid_ratio : float #= .2
-
+    loss : str
     gpu_id : int
     batch_size : int
     adam_epsilon : float # = 1e-8
@@ -87,7 +87,7 @@ class Config:
 
     max_frame_length : int #= 30 ###########바꿔야지
     max_target_length : int
-    num_target : int #= 59 # including Pad token
+    # num_target : int #= 59 # including Pad token
     n_epochs : int #= 30
     train_logging_fn :str #= './log/training.log'
     valid_logging_fn :str
@@ -284,8 +284,23 @@ def get_loaders(
     return train_loaders, valid_loaders, char_to_num, num_to_char
 
 
+def get_model(config):
+    if config.version == 'graph':
+        model = GCNNet(
+            hidden_size = mini['hand_df'].shape[-1],
+            final_output=final_output,
+            n_layer=config.num_layer,
+            activation=nn.LeakyReLU(),
+        )
+    elif config.version == 'graph_cnn':
+        model = GCNNetCNN(
+            hidden_size = mini['hand_df'].shape[-1],
+            final_output=final_output,
+            n_layer=config.num_layer,
+            activation=nn.LeakyReLU(),
+        )
 
-
+    return model
 
 def normalizeAdjacency(W):
     """
@@ -311,6 +326,19 @@ def normalizeAdjacency(W):
     # Return the Normalized Adjacency
     return D @ W @ D 
 
+def get_loss(final_output, config, ignore_index=False):
+    if config.loss == 'CTCLoss':
+        return nn.CTCLoss(blank=final_output-1, zero_infinity=True)
+    elif config.loss == 'CrossEntropy':
+        if ignore_index:
+            return nn.CrossEntropyLoss(ignore_index=ignore_index)
+        else:
+            return nn.CrossEntropyLoss()
+        
+    elif config.loss == 'NLLLoss':
+        tmp = torch.ones(final_output)
+        tmp[ignore_index] = 0
+        return nn.NLLLoss(weight=tmp, reduction='sum')
 
 def get_optimizer(model, config):
     '''
@@ -357,7 +385,7 @@ def transform_char_to_num(y):
 
 if __name__ == "__main__":
     config = Config(
-        version            = 'graph',
+        version            = 'graph_cnn', # [graph, graph_cnn]
         # train_fn           = ['./data/train_possible.parquet', './data/supplemental_possible.parquet'],
         # train_fn           = ['./data/partial_train_0.parquet', './data/partial_train_1.parquet', './data/partial_train_2.parquet'],
         # frame_fn           = ['./data/frame0.parquet','./data/frame1.parquet', './data/frame2.parquet'],
@@ -368,11 +396,13 @@ if __name__ == "__main__":
         # semi_preprocess_df = ['./data/partial_train_landmark01.parquet', './data/partial_supplemental_landmark01.parquet'],
         root_path          = './data/',
         char2pred_fn       = './data/character_to_prediction_index.json',
-        add_padding_token  = False,
+        add_padding_token  = True,
         ADJ_NORM           = True,
-        padding            = True,
+        padding            = True,  # dataloader
+        padding_max        = True,  # train
         # num_df_parts       = 10,
         drop_na            = True,
+        loss               = 'NLLLoss',  # 'CTCLoss', CrossEntropy -> version graph_cnn, NLLLoss
 
         valid_ratio        = .2,
         gpu_id             = 0,
@@ -383,11 +413,11 @@ if __name__ == "__main__":
         warmup_ratio       = .2,
         lr                 = 5e-5,
         max_grad_norm      = 5.,
-        num_layer          = 10,
+        num_layer          = 5,
 
         max_frame_length   = 200, 
-        max_target_length  = 45,
-        num_target         = 59,  # including Pad token, and 'None' token
+        max_target_length  = 50,
+        # num_target         = 60,  # including Pad token, and 'None' token
         n_epochs           = 100,
         train_logging_fn   = './log/training.log',
         valid_logging_fn   = './log/validating.log',
@@ -397,6 +427,19 @@ if __name__ == "__main__":
         random_seed = 42
         )
     
+    '''
+    version graph :
+        GCN,
+        loss : CTCLoss
+
+    version graph_cnn : 
+        GCN_CNN
+        Padding
+        loss : CrossEntropy
+        max_target : 50
+    '''
+
+
     pprint(dict(asdict(config).items()))
 
     # adj matric handling
@@ -441,14 +484,17 @@ if __name__ == "__main__":
 
         
 
-
-
     # add P token
     if config.add_padding_token == False:
         final_output = len(char_to_num)
     else:
-        char_to_num['B'] = len(char_to_num)
+        char_to_num['P'] = len(char_to_num)
         final_output = len(char_to_num) 
+
+
+    if config.loss == 'CTCLoss' :
+        char_to_num['B'] = len(char_to_num)
+        final_output = len(char_to_num)
 
     print("-" * 100)
 
@@ -502,13 +548,13 @@ if __name__ == "__main__":
     
 
 
-    
-    model = GCNNet(
-        hidden_size = mini['hand_df'].shape[-1],
-        final_output=final_output,
-        n_layer=config.num_layer,
-        activation=nn.LeakyReLU(),
-    )
+    model = get_model(config)
+    # model = GCNNet(
+    #     hidden_size = mini['hand_df'].shape[-1],
+    #     final_output=final_output,
+    #     n_layer=config.num_layer,
+    #     activation=nn.LeakyReLU(),
+    # )
     print(model)
 
 
@@ -518,7 +564,7 @@ if __name__ == "__main__":
 
     # # set loss fn
 
-    crit = nn.CTCLoss(blank=final_output-1, zero_infinity=True)
+    crit = get_loss(final_output, config, ignore_index=final_output-1)
     
     # # set warmup scheduler
     # scheduler = get_linear_schedule_with_warmup(
