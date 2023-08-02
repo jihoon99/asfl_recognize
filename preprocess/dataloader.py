@@ -18,7 +18,7 @@ class PadFill():
         self.config = config
         self.char_to_num = char_to_num
         self.adj_matrix = adj_matrix
-        
+
     def padding_hands(self, frames):
         (_, node_len, feature_len) = frames[0].shape
 
@@ -64,6 +64,7 @@ class PadFill():
         # y, ytoken, hand_df
 
         frames = [b['hand_df'] for b in bs]    # bs = from ClassificationDataset
+        frame_len = [b['hand_df'].shape[1] for b in bs]
         targets = [b['y'] for b in bs]
         
         if self.config.padding == True:
@@ -76,15 +77,24 @@ class PadFill():
             frame_length = torch.tensor([frame.shape[1] for frame in frames]).long()
             y_length = torch.tensor([target.shape[0] for target in targets]).long()
 
-
-        return {
-            'hand_df':frames,
-            'adj_matrix':self.adj_matrix,
-            'y':targets,
-            'frame_length':frame_length,
-            'y_length':y_length,
-            }
-
+        if self.config.version != 'transformer':
+            return {
+                'hand_df':frames,  # [bs, frame, node, features]
+                'adj_matrix':self.adj_matrix,
+                'y':targets,
+                'frame_length':frame_length,
+                'y_length':y_length,
+                }
+        
+        elif self.config.version == 'transformer':
+            return {
+                'hand_df':frames.reshape(frames.shape[0], frames.shape[1], -1),  # [bs, frame, node, features]
+                'frame_len':frame_len,
+                'adj_matrix':self.adj_matrix,
+                'y':targets,
+                'frame_length':frame_length,
+                'y_length':y_length,
+                }
 
 
 class ClassificationDataset(Dataset):

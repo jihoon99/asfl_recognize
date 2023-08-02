@@ -51,7 +51,11 @@ def training(
 
         optimizer.zero_grad()
 
-        output = model(hand_df, ADJ_MATRIX) # bs, maxlen, 59
+        if config.version != 'transformer':
+            output = model(hand_df, ADJ_MATRIX) # bs, maxlen, 59
+        elif config.version == 'transformer':
+            output = model(hand_df)
+
 
         torch.nn.utils.clip_grad_norm_(
                 model.parameters(),
@@ -92,7 +96,8 @@ def training(
             
 
         if idx%50==0:
-            output = output.permute(1,0,2)
+            if config.version != 'transformer':
+                output = output.permute(1,0,2)
             y_char = int_to_str(y[0].detach().cpu().numpy(), num_to_char)
             print(f'y : {y_char}')
             out_char = int_to_str(output[0].argmax(dim=-1).detach().cpu().numpy(), num_to_char)
@@ -125,7 +130,10 @@ def validating(
             y_length = mini['y_length']
             ADJ_MATRIX = ADJ_MATRIX.to(device)
 
-            output = model(hand_df, ADJ_MATRIX)
+            if config.version != 'transformer':
+                output = model(hand_df, ADJ_MATRIX) # bs, maxlen, 59
+            elif config.version == 'transformer':
+                output = model(hand_df)
 
             if config.loss == 'CTCLoss':
                 output = output.permute(1,0,2)  # 고쳐야하네.........ㄴㅁㄴㅇ리;ㅏㅁ너;리머ㅏㄴㅇ;ㅣ라
